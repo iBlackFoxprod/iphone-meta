@@ -18,57 +18,17 @@ import pillow_heif
 import numpy as np
 from PIL import Image, ImageFilter, ImageEnhance
 
+from camera_profiles import (
+    IPHONE_MODELS,
+    IOS_VERSIONS,
+    get_available_camera_profiles,
+    get_default_camera_profile,
+    get_unavailable_camera_labels,
+)
+
 # ── Настройки ────────────────────────────────────────────────────────────────
 
 SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp"}
-
-IPHONE_MODELS = [
-    "iPhone 15 Pro Max",
-    "iPhone 15 Pro",
-    "iPhone 15",
-    "iPhone 15 Plus",
-    "iPhone 14 Pro Max",
-    "iPhone 14 Pro",
-    "iPhone 14",
-    "iPhone 14 Plus",
-    "iPhone 13 Pro Max",
-    "iPhone 13 Pro",
-    "iPhone 13",
-    "iPhone 13 mini",
-]
-
-IOS_VERSIONS = [
-    "18.5",
-    "18.4",
-    "18.3",
-    "18.2",
-    "18.1",
-    "18.0",
-    "17.6",
-    "17.5",
-    "17.4",
-    "17.3",
-    "17.2",
-    "17.1",
-    "17.0",
-    "16.7",
-    "16.6",
-    "16.5",
-    "16.4",
-    "16.3",
-    "16.2",
-    "16.1",
-    "16.0",
-    "15.8",
-    "15.7",
-    "15.6",
-    "15.5",
-    "15.4",
-    "15.3",
-    "15.2",
-    "15.1",
-    "15.0",
-]
 
 MODES = ["soft", "medium", "hard"]
 
@@ -91,6 +51,7 @@ class ImageConverterGUI:
         self.output_jpeg_dir = Path("./output/JPEG")
         self.output_metadata_dir = Path("./output/Metadata")
         self.is_converting = False
+        self.camera_profiles = {}
         
         self.setup_ui()
     
@@ -103,7 +64,7 @@ class ImageConverterGUI:
         # Info frame about metadata
         info_frame = ttk.Frame(self.root)
         info_frame.pack(padx=10, pady=5, fill="x")
-        info_text = "ℹ️  Metadata Protection: EXIF is embedded in HEIC files + backed up as .metadata.json\n  Messaging apps may still strip EXIF, but your backup file preserves all camera info."
+        info_text = "Metadata Protection: EXIF is embedded in HEIC files + backed up as .metadata.json\nMessaging apps may still strip EXIF, but your backup file preserves all camera info."
         info_label = ttk.Label(info_frame, text=info_text, foreground="green", 
                               font=("Arial", 9), wraplength=650, justify="left")
         info_label.pack(fill="x")
@@ -125,32 +86,43 @@ class ImageConverterGUI:
         ios_combo = ttk.Combobox(settings_frame, textvariable=self.ios_var, 
                                 values=IOS_VERSIONS, state="readonly", width=30)
         ios_combo.grid(row=1, column=1, sticky="ew", pady=5, padx=5)
+
+        # Camera Profile
+        ttk.Label(settings_frame, text="Camera Profile:").grid(row=2, column=0, sticky="w", pady=5)
+        self.camera_var = tk.StringVar()
+        self.camera_combo = ttk.Combobox(settings_frame, textvariable=self.camera_var, state="readonly", width=30)
+        self.camera_combo.grid(row=2, column=1, sticky="ew", pady=5, padx=5)
+
+        self.camera_note = ttk.Label(settings_frame, text="", foreground="#777777", wraplength=430, justify="left")
+        self.camera_note.grid(row=3, column=0, columnspan=3, sticky="w", pady=(0, 6))
         
         # Processing Mode
-        ttk.Label(settings_frame, text="Processing Mode:").grid(row=2, column=0, sticky="w", pady=5)
+        ttk.Label(settings_frame, text="Processing Mode:").grid(row=4, column=0, sticky="w", pady=5)
         self.mode_var = tk.StringVar(value="hard")
         mode_combo = ttk.Combobox(settings_frame, textvariable=self.mode_var, 
                                  values=MODES, state="readonly", width=30)
-        mode_combo.grid(row=2, column=1, sticky="ew", pady=5, padx=5)
+        mode_combo.grid(row=4, column=1, sticky="ew", pady=5, padx=5)
         
         # Mode description
         mode_desc = ttk.Label(settings_frame, 
                              text="soft: subtle  |  medium: balanced  |  hard: strong AI-detection removal",
                              font=("Arial", 9), foreground="gray")
-        mode_desc.grid(row=3, column=0, columnspan=2, sticky="w", pady=3)
+        mode_desc.grid(row=5, column=0, columnspan=2, sticky="w", pady=3)
         
         # Quality
-        ttk.Label(settings_frame, text="HEIC Quality:").grid(row=4, column=0, sticky="w", pady=5)
+        ttk.Label(settings_frame, text="HEIC Quality:").grid(row=6, column=0, sticky="w", pady=5)
         self.quality_var = tk.IntVar(value=100)
         quality_scale = ttk.Scale(settings_frame, from_=60, to=100, orient="horizontal", 
                                  variable=self.quality_var)
-        quality_scale.grid(row=4, column=1, sticky="ew", pady=5, padx=5)
+        quality_scale.grid(row=6, column=1, sticky="ew", pady=5, padx=5)
         self.quality_label = ttk.Label(settings_frame, text="100")
-        self.quality_label.grid(row=4, column=2, padx=5)
+        self.quality_label.grid(row=6, column=2, padx=5)
         quality_scale.bind("<B1-Motion>", lambda e: self.update_quality_label())
         quality_scale.bind("<ButtonRelease-1>", lambda e: self.update_quality_label())
         
         settings_frame.columnconfigure(1, weight=1)
+        self.model_var.trace_add("write", self.refresh_camera_options)
+        self.refresh_camera_options()
         
         # Folder selection frame
         folder_frame = ttk.LabelFrame(self.root, text="Folders", padding=10)
@@ -190,6 +162,32 @@ class ImageConverterGUI:
     
     def update_quality_label(self):
         self.quality_label.config(text=str(self.quality_var.get()))
+
+    def refresh_camera_options(self, *_):
+        model = self.model_var.get()
+        profiles = get_available_camera_profiles(model)
+        self.camera_profiles = {profile["label"]: profile for profile in profiles}
+
+        labels = [profile["label"] for profile in profiles]
+        self.camera_combo["values"] = labels
+
+        current_label = self.camera_var.get()
+        if current_label not in self.camera_profiles:
+            default_profile = get_default_camera_profile(model)
+            self.camera_var.set(default_profile["label"])
+
+        unavailable = get_unavailable_camera_labels(model)
+        if unavailable:
+            self.camera_note.config(text=f"Disabled for this model: {', '.join(unavailable)}")
+        else:
+            self.camera_note.config(text="All camera profiles are compatible with this model.")
+
+    def get_selected_camera_profile(self) -> dict:
+        camera_label = self.camera_var.get()
+        camera_profile = self.camera_profiles.get(camera_label)
+        if not camera_profile:
+            raise ValueError("Select a valid camera profile for the chosen iPhone model.")
+        return camera_profile
     
     def log(self, text):
         self.log_text.config(state="normal")
@@ -227,10 +225,12 @@ class ImageConverterGUI:
             
             model = self.model_var.get()
             ios_version = self.ios_var.get()
+            camera_profile = self.get_selected_camera_profile()
             mode = self.mode_var.get()
             quality = self.quality_var.get()
             
             self.log(f"Device: {model} | iOS: {ios_version}")
+            self.log(f"Camera: {camera_profile['label']}")
             self.log(f"Mode: {mode.upper()} | Quality: {quality}\n")
             
             if not self.input_dir.exists():
@@ -260,7 +260,7 @@ class ImageConverterGUI:
                 jpeg_dst = self.output_jpeg_dir / (base_name + ".jpg")
                 
                 try:
-                    self.convert_to_both(src, heic_dst, jpeg_dst, model, ios_version, mode, quality)
+                    self.convert_to_both(src, heic_dst, jpeg_dst, model, ios_version, camera_profile, mode, quality)
                     self.log(f"✓ {src.name}")
                     self.log(f"  ├─ HEIC: {heic_dst.name}")
                     self.log(f"  ├─ JPEG: {jpeg_dst.name}")
@@ -284,7 +284,7 @@ class ImageConverterGUI:
             self.convert_btn.config(state="normal")
     
     def convert_to_heic(self, src_path: Path, dst_path: Path, model: str, ios_version: str, 
-                       mode: str, quality: int) -> None:
+                       camera_profile: dict, mode: str, quality: int) -> None:
         params = PARAMS[mode]
         
         with Image.open(src_path) as img:
@@ -295,7 +295,7 @@ class ImageConverterGUI:
             img = self.remove_ai_traces(img, params)
             
             w, h = img.size
-            exif_dict = self.build_exif_dict(model, ios_version, original_date, w, h)
+            exif_dict = self.build_exif_dict(model, ios_version, camera_profile, original_date, w, h)
             exif_bytes = piexif.dump(exif_dict)
             
             dst_path.parent.mkdir(parents=True, exist_ok=True)
@@ -309,10 +309,10 @@ class ImageConverterGUI:
             
             # Save metadata to dedicated folder
             base_name = dst_path.stem
-            self.save_metadata_sidecar(self.output_metadata_dir / (base_name + ".metadata.json"), exif_dict, model, ios_version)
+            self.save_metadata_sidecar(self.output_metadata_dir / (base_name + ".metadata.json"), exif_dict, model, ios_version, camera_profile)
     
     def convert_to_both(self, src_path: Path, heic_dst: Path, jpeg_dst: Path, model: str, 
-                        ios_version: str, mode: str, quality: int) -> None:
+                    ios_version: str, camera_profile: dict, mode: str, quality: int) -> None:
         """Convert to both HEIC and JPEG with shared metadata"""
         params = PARAMS[mode]
         
@@ -325,7 +325,7 @@ class ImageConverterGUI:
             processed_img = self.remove_ai_traces(img, params)
             
             w, h = processed_img.size
-            exif_dict = self.build_exif_dict(model, ios_version, original_date, w, h)
+            exif_dict = self.build_exif_dict(model, ios_version, camera_profile, original_date, w, h)
             exif_bytes = piexif.dump(exif_dict)
             
             # Ensure directories exist
@@ -348,7 +348,7 @@ class ImageConverterGUI:
             # Save metadata to dedicated folder with better naming
             base_name = heic_dst.stem
             metadata_path = self.output_metadata_dir / (base_name + ".metadata.json")
-            self.save_metadata_sidecar(metadata_path, exif_dict, model, ios_version)
+            self.save_metadata_sidecar(metadata_path, exif_dict, model, ios_version, camera_profile)
     
     def jpeg_pass(self, img: Image.Image, params: dict) -> Image.Image:
         q = int(np.random.uniform(*params["jpeg_q"]))
@@ -403,7 +403,7 @@ class ImageConverterGUI:
         
         return img
     
-    def build_exif_dict(self, model: str, ios_version: str, original_date: bytes | None, 
+    def build_exif_dict(self, model: str, ios_version: str, camera_profile: dict, original_date: bytes | None, 
                         w: int, h: int) -> dict:
         """Build EXIF dictionary (returns dict, not bytes)"""
         exif_base = {
@@ -421,15 +421,14 @@ class ImageConverterGUI:
                 piexif.ExifIFD.ExposureProgram:       2,
                 piexif.ExifIFD.MeteringMode:          5,
                 piexif.ExifIFD.Flash:                 16,
-                piexif.ExifIFD.FocalLength:           (77, 10),
                 piexif.ExifIFD.ColorSpace:            65535,
                 piexif.ExifIFD.ExposureMode:          0,
                 piexif.ExifIFD.WhiteBalance:          0,
                 piexif.ExifIFD.SceneCaptureType:      0,
-                piexif.ExifIFD.LensSpecification:     ((13, 10), (90, 10), (0, 1), (0, 1)),
+                piexif.ExifIFD.LensSpecification:     camera_profile["lens_spec"],
                 piexif.ExifIFD.LensMake:              b"Apple",
-                piexif.ExifIFD.LensModel:             b"iPhone 15 Pro Max back triple camera 7.7mm f/2.8",
-                piexif.ExifIFD.FNumber:               (28, 10),
+                piexif.ExifIFD.LensModel:             camera_profile["lens_model"].encode(),
+                piexif.ExifIFD.FNumber:               camera_profile["f_number"],
                 piexif.ExifIFD.ISOSpeedRatings:       64,
                 piexif.ExifIFD.ExposureTime:          (1, 120),
                 piexif.ExifIFD.ShutterSpeedValue:     (6965784, 1000000),
@@ -437,7 +436,8 @@ class ImageConverterGUI:
                 piexif.ExifIFD.BrightnessValue:       (3200000, 1000000),
                 piexif.ExifIFD.ExposureBiasValue:     (0, 1),
                 piexif.ExifIFD.SubjectDistance:       (0, 1),
-                piexif.ExifIFD.FocalLengthIn35mmFilm: 57,
+                piexif.ExifIFD.FocalLength:           camera_profile["focal_length"],
+                piexif.ExifIFD.FocalLengthIn35mmFilm: camera_profile["focal_length_35mm"],
                 piexif.ExifIFD.SensingMethod:         2,
                 piexif.ExifIFD.CustomRendered:        2,
                 piexif.ExifIFD.UserComment:           b"ASCII\x00\x00\x00",
@@ -454,11 +454,19 @@ class ImageConverterGUI:
         exif["Exif"][piexif.ExifIFD.PixelYDimension]   = h
         return exif
     
-    def save_metadata_sidecar(self, metadata_path: Path, exif_dict: dict, model: str, ios_version: str) -> None:
+    def save_metadata_sidecar(self, metadata_path: Path, exif_dict: dict, model: str, ios_version: str, camera_profile: dict) -> None:
         """Save metadata as backup JSON file"""
         metadata = {
             "device_model": model,
             "ios_version": ios_version,
+            "camera_profile": {
+                "key": camera_profile["key"],
+                "label": camera_profile["label"],
+                "lens_model": camera_profile["lens_model"],
+                "focal_length": str(camera_profile["focal_length"]),
+                "f_number": str(camera_profile["f_number"]),
+                "focal_length_35mm": camera_profile["focal_length_35mm"],
+            },
             "conversion_date": datetime.now().isoformat(),
             "exif": self.exif_dict_to_readable(exif_dict),
         }

@@ -156,6 +156,22 @@ The `.heic.metadata.json` backup file contains:
 pip install pillow pillow-heif piexif numpy
 ```
 
+Or install everything from the included manifest:
+
+```bash
+pip install -r requirements.txt
+```
+
+## 🧱 Windows EXE Build
+
+To package the GUI into a standalone executable on Windows:
+
+```bash
+build_exe.bat
+```
+
+The resulting file will be created at `dist/MetaIphonePhoto.exe`.
+
 ## 📝 Tips
 
 1. **Best results** - Use "hard" mode for maximum AI detection bypass

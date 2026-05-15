@@ -22,9 +22,42 @@ HEIC_DIR     = "./output/HEIC"
 JPEG_DIR     = "./output/JPEG"
 METADATA_DIR = "./output/Metadata"
 IPHONE_MODEL = "iPhone 15 Pro Max"
-IOS_VERSION  = "26.3"
+IOS_VERSION  = "18.5"
 QUALITY      = 100
 BOTH_FORMATS = True  # Output both HEIC and JPEG
+
+IOS_VERSIONS = [
+    "18.5",
+    "18.4",
+    "18.3",
+    "18.2",
+    "18.1",
+    "18.0",
+    "17.6",
+    "17.5",
+    "17.4",
+    "17.3",
+    "17.2",
+    "17.1",
+    "17.0",
+    "16.7",
+    "16.6",
+    "16.5",
+    "16.4",
+    "16.3",
+    "16.2",
+    "16.1",
+    "16.0",
+    "15.8",
+    "15.7",
+    "15.6",
+    "15.5",
+    "15.4",
+    "15.3",
+    "15.2",
+    "15.1",
+    "15.0",
+]
 
 # Сила обработки: "soft" / "medium" / "hard"
 # soft  — почти незаметно, может не помочь

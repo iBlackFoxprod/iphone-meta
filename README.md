@@ -8,7 +8,7 @@ A tool to convert photos to both HEIC and JPEG formats with iPhone EXIF metadata
 - **Organized folder structure** - Automatically organized into HEIC/, JPEG/, and Metadata/ folders
 - **Smart file naming** - Files named as: `filename_iPhoneModel_mode`
 - **Multiple iPhone models** - iPhone 15, 14, 13, etc. with dropdown selector
-- **Multiple iOS versions** - iOS 18, 17, 16, and more
+- **Multiple iOS versions** - iOS 18.5 down to 15.0 with a broader preset list
 - **Three processing modes:**
   - `soft` - Subtle changes, might not bypass AI detection
   - `medium` - Balanced approach, good results
